@@ -13,7 +13,8 @@
     V1.0 03.06.2025 - Initial Version
     V1.1 04.06.2025 - Change archive collection method to save a lot of time
     V1.2 05.06.2025 - no parameter CSVFileName anymore
-    V1.3 05.06.2025 - take into account of UNLIMITED quotas 
+    V1.3 05.06.2025 - take into account of UNLIMITED quotas
+    V1.4 10.07.2025 - -in instead of -eq, Archive sum corrected
     
 .AUTHOR/COPYRIGHT:
     Steffen Meyer
@@ -27,7 +28,7 @@ Param(
      [switch]$NoMail
      )
 
-$version = "V1.3_05.06.2025"
+$version = "V1.4_10.07.2025"
 
 $now = Get-Date -Format G
 
@@ -247,12 +248,12 @@ foreach ($Database in $Databases)
             
     #Database stats
     $MountedOn = (($Database).MountedOnServer -split "\.")[0]
-    $ActPref = (($Database).activationpreference | where key -eq (($Database).MountedOnServer -split "\.")[0]).value
+    $ActPref = (($Database).activationpreference | where key -in (($Database).MountedOnServer -split "\.")[0]).value
     $DBSizeInGB = $Database.databasesize.toGB()
     $WhiteSpaceInGB = $Database.availablenewmailboxspace.toGB()
     $NetCapaInGB = $DBSizeInGB - $WhiteSpaceInGB
     
-    $ARCH = ($Archives.archivedatabase.Name -eq $Database.Name).Count
+    $ARCH = (($Archives.archivedatabase.Name -eq $Database.Name) | measure-object -sum ).sum
     
     #Mailboxes per DB   
     try
