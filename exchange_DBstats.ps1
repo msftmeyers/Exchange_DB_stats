@@ -253,8 +253,6 @@ foreach ($Database in $Databases)
     $WhiteSpaceInGB = $Database.availablenewmailboxspace.toGB()
     $NetCapaInGB = $DBSizeInGB - $WhiteSpaceInGB
     
-    $ARCH = (($Archives.archivedatabase.Name -eq $Database.Name) | measure-object ).count
-    
     #Mailboxes per DB   
     try
     {
@@ -265,6 +263,18 @@ foreach ($Database in $Databases)
         Write-Host "`nWe couldn't collect Mailboxes for database $($database.name)."
     }
     
+    #Archive mailboxes per DB
+    $ARCH = $Archives.archivedatabase.Name -like $Database.Name
+
+    if ($ARCH)
+    {
+        $ARCH = $ARCH.Count
+    }
+    else
+    {
+        $ARCH = "0"
+    }
+
     #Public Folder mailboxes per DB
     try
     {
