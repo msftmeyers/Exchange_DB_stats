@@ -15,7 +15,9 @@
     V1.2 05.06.2025 - no parameter CSVFileName anymore
     V1.3 05.06.2025 - take into account of UNLIMITED quotas
     V1.5 15.07.2025 - -in instead of -eq, Archive count corrected
-    
+    V1.6 29.07.2025 - adding SUM line
+    V1.7 30.07.2025 - changed HTML code, bold TOTAL line
+
 .AUTHOR/COPYRIGHT:
     Steffen Meyer
     Cloud Solution Architect
@@ -28,7 +30,7 @@ Param(
      [switch]$NoMail
      )
 
-$version = "V1.5_15.07.2025"
+$version = "V1.7_30.07.2025"
 
 $now = Get-Date -Format G
 
@@ -127,27 +129,13 @@ $CsvFileName = $Company + '_' + $(get-date -f yyyyMMdd) + '.csv'
 $OutputFile = Join-Path $ScriptPath -ChildPath $CsvFileName
 
 #HTML/CSS
-$header = "<html>
+$Style =   "<html>
            <head>
            <style type=$("text/css")>
            table {border-collapse:collapse; border-spacing:0; margin:0}
            div, td {padding:0;}
            div {margin:0 !important;}
            BODY{font-family: Arial, sans-serif ;font-size: 8px;}
-           H1{font-size: 16px;}
-           H2{font-size: 14px;}
-           H3{font-size: 12px;}
-           H4{font-size: 10px;}
-           H5{font-size: 9px;}
-           </style>
-           </head>
-           <body>
-           <H2 align=""left"">Exchange Database Report - $Company - $(Get-Date $now -Format 'dd.MM.yyyy HH:mm')</H2>
-           </body>"
-
-$style =   "<html>
-           <style>
-           BODY{font-family: Arial; font-size: 8pt;}
            H1{font-size: 16px;}
            H2{font-size: 14px;}
            H3{font-size: 12px;}
@@ -160,9 +148,11 @@ $style =   "<html>
            td.warn{background: #FFE600;}
            td.fail{background: #FF0000; color: #ffffff;}
            td.info{background: #85D4FF;}
-           </style>"
+           </style>
+           </head>"
 
-$MailBody = $header
+$Mailbody = "<body>
+           <H2 align=""left"">Exchange Database Report - $Company - $(Get-Date $now -Format 'dd.MM.yyyy HH:mm')</H2>"
 
 #HTML/CSS highlighting
 $Pass = "OK"
@@ -227,6 +217,12 @@ Write-Host "`nWe found $($DBCount) databases..." -ForegroundColor White
 #Collecting DB stats
 $Results = @()
 $Count = 0
+$DBSizeTotalInGB = $null
+$WhiteSpaceTotalInGB = $null
+$NetCapaTotalInGB = $null
+$MBXTotal = $null
+$ARCHTotal = $null
+$PFMBXTotal = $null
 
 foreach ($Database in $Databases)
 {
@@ -292,14 +288,14 @@ foreach ($Database in $Databases)
         Database = $Database.Name
         DAG = $Database.MasterServerOrAvailabilityGroup.Name
         MountedOn = $MountedOn       
-        OnActPref1 = if ($ActPref -gt 1) {"SWITCHED"} elseif ($ActPref -lt 1) {"CRITICAL"} else {"OK"}
-        DBSizeinGB = $DBSizeInGB
-        WSinGB = $WhiteSpaceInGB
-        NetCapaInGB = $NetCapaInGB
+        "On ActPref 1" = if ($ActPref -gt 1) {"SWITCHED"} elseif ($ActPref -lt 1) {"CRITICAL"} else {"OK"}
+        "Gross DBSize in GB" = $DBSizeInGB
+        "Whitespace in GB" = $WhiteSpaceInGB
+        "Net DBSize in GB" = $NetCapaInGB
         DBSize = if ($NetCapaInGB -gt $CritDBSize) {"CRITICAL"} elseif ($NetCapaInGB -gt $WarnDBSize) {"WARNING"} else {"OK"}            
-        MBX = $MBX
-        ARCH = $ARCH
-        PFMBX = $PFMBX             
+        Mailboxes = $MBX
+        Archives = $ARCH
+        "PF Mailboxes" = $PFMBX             
         MBXperDB = if ($SUM -gt $CritMBXCount) {"CRITICAL"} elseif ($SUM -gt $WarnMBXCount) {"WARNING"} else {"OK"}
         CircLog = $Database.CircularLoggingEnabled
         LastFullBK = $Database.LastFullBackup
@@ -307,10 +303,10 @@ foreach ($Database in $Databases)
         IsRecoveryDB = $Database.Recovery
         ExclfromProvi = $Database.IsExcludedFromProvisioning
         IssueWarInGB = if ($Database.IssueWarningQuota.isunlimited -eq $True) {"UNLIMITED"} else {$Database.IssueWarningQuota.value.toGB()}
-        ProhSendInGB = if ($Database.ProhibitSendQuota.isunlimited -eq $True)  {"UNLIMITED"} else {$Database.ProhibitSendQuota.value.toGB()}
-        ProhSendRecInGB = if ($Database.ProhibitSendReceiveQuota.isunlimited -eq $True)  {"UNLIMITED"} else {$Database.ProhibitSendReceiveQuota.value.toGB()}
-        RecItemsWaInGB = if ($Database.RecoverableItemsWarningQuota.isunlimited -eq $True)  {"UNLIMITED"} else {$Database.RecoverableItemsWarningQuota.value.toGB()}
-        RecItemsInGB = if ($Database.RecoverableItemsQuota.isunlimited -eq $True)  {"UNLIMITED"} else {$Database.RecoverableItemsQuota.value.toGB()}
+        ProhSendInGB = if ($Database.ProhibitSendQuota.isunlimited -eq $True) {"UNLIMITED"} else {$Database.ProhibitSendQuota.value.toGB()}
+        ProhSendRecInGB = if ($Database.ProhibitSendReceiveQuota.isunlimited -eq $True) {"UNLIMITED"} else {$Database.ProhibitSendReceiveQuota.value.toGB()}
+        RecItemsWaInGB = if ($Database.RecoverableItemsWarningQuota.isunlimited -eq $True) {"UNLIMITED"} else {$Database.RecoverableItemsWarningQuota.value.toGB()}
+        RecItemsInGB = if ($Database.RecoverableItemsQuota.isunlimited -eq $True) {"UNLIMITED"} else {$Database.RecoverableItemsQuota.value.toGB()}
         DelItemRetInDays = $Database.DeletedItemRetention.Totaldays
         MBXRetInDays = $Database.MailboxRetention.Totaldays
         MountDial = $Database.AutoDatabaseMountDial
@@ -320,27 +316,62 @@ foreach ($Database in $Databases)
     
     #Creating object and adding all data   
     $Results += New-Object -TypeName PSObject -Property $data
-     
+
+    #TOTAL numbers    
+    $DBSizeTotalInGB += ($DBSizeInGB | measure -Sum).Sum
+    $WhiteSpaceTotalInGB += ($WhiteSpaceInGB | measure -Sum).Sum
+    $NetCapaTotalInGB += ($NetCapaInGB | measure -Sum).Sum
+    $MBXTotal += ($MBX | measure -Sum).Sum
+    $ARCHTotal += ($ARCH | measure -Sum).Sum
+    $PFMBXTotal += ($PFMBX | measure -Sum).Sum
 }
 Write-Progress -Activity $Activity -Completed
 
 #Export to CSVFile
-$Results | Export-Csv -Path $OutputFile -Encoding UTF8 -Delimiter ";" -NoTypeInformation
+try
+{
+    $Results | Export-Csv -Path $OutputFile -Encoding UTF8 -Delimiter ";" -NoTypeInformation -ErrorAction Stop
 
-write-host "`n--------------------------------------------------------------------------------------------------------------"
-write-host "Exchange Database statistics were successfully exported to ""$($OutputFile)."""
-write-host "--------------------------------------------------------------------------------------------------------------"
+    write-host "`n--------------------------------------------------------------------------------------------------------------"
+    write-host "Exchange Database statistics were successfully exported to ""$($OutputFile)""." -ForegroundColor Green
+    write-host "--------------------------------------------------------------------------------------------------------------"
+}
+catch
+{
+    write-host "`n--------------------------------------------------------------------------------------------------------------"
+    write-host "Exchange Database statistics couldn't be exported to ""$($OutputFile)""." -ForegroundColor Red
+    write-host "--------------------------------------------------------------------------------------------------------------"
+}
+
+#Adding SUM line for HTML Output
+$Results += New-Object PSObject -Property @{"Database" = "TOTAL"; "Gross DBSize in GB" = "DB Size`r`n"  + "$DBSizeTotalinGB" + " GB"; "Whitespace in GB" = "Whitespace`r`n" + "$WhiteSpaceTotalInGB" + " GB"; "Net DBSize in GB" = "DB NetCapacity`r`n" + "$NetCapaTotalInGB" + " GB"; "Mailboxes" = "$MBXTotal" + "`r`nMailboxes"; "Archives" = "$ARCHTotal" + "`r`nArchives" ; "PF Mailboxes" = "$PFMBXTotal" + "`r`nPF Mailboxes"}
 
 #Optional: Send HTML based email report
 if (!($NoMail))
 {
     try
     {
-        $MailBody += $Results | select-object -Property Database,DAG,MountedOn,OnActPref1,DBSizeinGB,WSinGB,NetCapaInGB,DBSize,MBX,ARCH,PFMBX,MBXperDB | ConvertTo-Html -Head $style | Set-HighlightErrors -CSSErrorClass fail -CSSWarnClass warn -CSSPassClass pass -CSSInfoClass info -ERRORValue $Fail -WARNValue $Warn -PASSValue $Pass -INFOValue $Info
-
-        Send-MailMessage -To $MailTo -From $MailFrom -Subject $MailSubject -BodyAsHtml $MailBody -Attachments $OutputFile -SmtpServer $MailServer -Encoding UTF8 -ErrorAction Stop
+        #Bold letter/numbers in last line in HTML table
+        $HtmlTable = $Results | select-object -Property "Database","DAG","MountedOn","On ActPref 1","Gross DBSize in GB","Whitespace in GB","Net DBSize in GB","DBSize","Mailboxes","Archives","PF Mailboxes","MBXperDB" | ConvertTo-Html -Fragment | Set-HighlightErrors -CSSErrorClass fail -CSSWarnClass warn -CSSPassClass pass -CSSInfoClass info -ERRORValue $Fail -WARNValue $Warn -PASSValue $Pass -INFOValue $Info
+        $HtmlTable = $HtmlTable -replace "`r`n","<br>"
+        $Lines = $HtmlTable -split "`n"
+        $lastTrIndex = ($Lines | Select-String -Pattern "<tr>" | Select-Object -Last 1).Linenumber - 1
+        $Lines[$lastTrIndex] = $Lines[$LastTrIndex] -replace '<td>(.*?)</td>','<td><b>$1</b></td>'
+        $FinalHtmlTable = $Lines -join "`n"
         
-        Write-Host "`nNOTICE: Mail report was sent to $($Recipients) successfully." -ForegroundColor Cyan
+        #Add table to Mailbody
+        $Mailbody += $FinalHtmlTable
+
+        #Finalize HTML
+        $FinalHtml = "$Style`n" +
+        "$Mailbody`n" +
+        "</body>`n" +
+        "</html>"
+        
+        #Send Mail with HTML body and CSV as attachment
+        Send-MailMessage -To $MailTo -From $MailFrom -Subject $MailSubject -BodyAsHtml $FinalHtml -Attachments $OutputFile -SmtpServer $MailServer -Encoding UTF8 -ErrorAction Stop
+        
+        Write-Host "`nNOTICE: Mail report was sent to $($Recipients) successfully."
     }
     catch
     {
