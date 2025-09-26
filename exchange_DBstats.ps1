@@ -18,6 +18,8 @@
     V1.6 29.07.2025 - adding SUM line
     V1.7 30.07.2025 - changed HTML code, bold TOTAL line
     V2.0 23.09.2025 - collecting disk sizes to be compared with disk thresholds, added table of critical disks and/or dbs, if there are some, so move-mailbox sources can be found easily
+    V2.1 24.09.2025 - Adding CriticalCsvFile, if there are critical disks or databases found (based on critical thresholds in settings.cfg)
+    V2.2 25.09.2025 - Adding StagingCsvFile with all possible destination databases for mailbox moves/distributions, based on staging thresholds in settings.cfg (if there are "special" separate dbs, you need to exclude these dbs manually from CSV before moving.)
 
 .AUTHOR/COPYRIGHT:
     Steffen Meyer
@@ -31,7 +33,7 @@ Param(
      [switch]$NoMail
      )
 
-$version = "V2.0_23.09.2025"
+$version = "V2.2_25.09.2025"
 
 $now = Get-Date -Format G
 
@@ -86,14 +88,20 @@ catch
     Write-Host "`nDo not forget to save the script!" -ForegroundColor Red
 }
 
-write-host "`n-------------------------------------------------------------------------------------" -foregroundcolor green
-write-host   " This report collects important informations of all Exchange Databases in this       " -foregroundcolor green
-write-host   " organization, e.g. where it is currently mounted, Disk sizes, Disk types, DB sizes, " -foregroundcolor green
-write-host   " DB whitespaces (root tables), Mailbox counts, Archive counts, DB quotas, paths,     " -foregroundcolor green
-write-host   " circular logging and more to a common *.csv-file. Additionally, it sends an HTML-   " -ForegroundColor green
-write-host   " based email report (can be prevented) with all important numbers. In this report,   " -ForegroundColor green
-write-host   " exceeded numbers are highlighted (based on your thresholds in settings.cfg).        " -ForegroundColor green
-write-host   "-------------------------------------------------------------------------------------" -foregroundcolor green
+Write-Host "`n-------------------------------------------------------------------------------------" -foregroundcolor green
+Write-Host   " This report collects all important informations of all Exchange Databases in this   " -foregroundcolor green
+Write-Host   " organization, e.g. where it is currently mounted, Disk sizes, Disk types, DB sizes, " -foregroundcolor green
+Write-Host   " DB whitespaces (root tables), Mailbox counts, Archive counts, DB quotas, paths,     " -foregroundcolor green
+Write-Host   " circular logging and more to a common *.csv-file. Additionally, it sends an HTML-   " -ForegroundColor green
+Write-Host   " based email report (can be prevented) with all important numbers.                   " -ForegroundColor green
+Write-Host   "" 
+Write-Host   " Based on thresholds in settings.cfg config file, critical and warnings are high-    " -ForegroundColor green
+Write-Host   " lighted in HTML report. Additionally and also based on your thresholds and values,  " -ForegroundColor green
+Write-Host   " one or more attachments are added to the mail report.                               " -ForegroundColor green
+Write-Host   " You can easily use these attachments to find critical disks/databases and also      " -ForegroundColor green
+Write-Host   " staging/destination databases for emptying heavily loaded databases into others     " -ForegroundColor green
+Write-Host   " by using Migration Batches or Move-Requests.                                        " -ForegroundColor green 
+Write-Host   "-------------------------------------------------------------------------------------" -foregroundcolor green
 
 Write-Host "`nScriptversion: $version"
 Write-Host "Script started: $now"
@@ -105,7 +113,7 @@ if (Test-Path -Path "$ScriptPath\settings.cfg")
 }
 else
 {
-    write-host "`nThe required file SETTINGS.CFG is missing. Add the file to ensure a working SCRIPT/MAIL REPORT." -ForegroundColor Magenta
+    Write-Host "`nThe required file SETTINGS.CFG is missing. Add the file to ensure a working SCRIPT/MAIL REPORT." -ForegroundColor Magenta
     Return
 }
 
@@ -113,14 +121,18 @@ else
 $Company = ($config | Where-Object {$_.StartsWith("Company")}).split('=',2)[1]
     
 #Thresholds for Highlighting
-$CritFreeSpace = ($config | Where-Object {$_.StartsWith("CritFreeSpace")}).split('=',2)[1]
-$WarnFreeSpace = ($config | Where-Object {$_.StartsWith("WarnFreeSpace")}).split('=',2)[1]
-$CritFreePercent = ($config | Where-Object {$_.StartsWith("CritFreePercent")}).split('=',2)[1]
-$WarnFreePercent = ($config | Where-Object {$_.StartsWith("WarnFreePercent")}).split('=',2)[1]
-$CritDBSize = ($config | Where-Object {$_.StartsWith("CritDBSizeInGB")}).split('=',2)[1]
-$WarnDBSize = ($config | Where-Object {$_.StartsWith("WarnDBSizeinGB")}).split('=',2)[1]
-$CritMBXCount = ($config | Where-Object {$_.StartsWith("CritMailboxCountperDB")}).split('=',2)[1]
-$WarnMBXCount = ($config | Where-Object {$_.StartsWith("WarnMailboxCountperDB")}).split('=',2)[1]
+$CritFreeSpace = ($config | Where-Object {$_.StartsWith("CriticalFreeSpaceinGB")}).split('=',2)[1]
+$WarnFreeSpace = ($config | Where-Object {$_.StartsWith("WarningFreeSpaceinGB")}).split('=',2)[1]
+$StagFreeSpace = ($config | Where-Object {$_.StartsWith("StagingFreeSpaceinGB")}).split('=',2)[1]
+$CritFreePercent = ($config | Where-Object {$_.StartsWith("CriticalFreePercent")}).split('=',2)[1]
+$WarnFreePercent = ($config | Where-Object {$_.StartsWith("WarningFreePercent")}).split('=',2)[1]
+$StagFreePercent = ($config | Where-Object {$_.StartsWith("StagingFreePercent")}).split('=',2)[1]
+$CritDBSize = ($config | Where-Object {$_.StartsWith("CriticalDBSizeInGB")}).split('=',2)[1]
+$WarnDBSize = ($config | Where-Object {$_.StartsWith("WarningDBSizeinGB")}).split('=',2)[1]
+$StagDBSize = ($config | Where-Object {$_.StartsWith("StagingDBSizeinGB")}).split('=',2)[1]
+$CritMBXCount = ($config | Where-Object {$_.StartsWith("CriticalMailboxCountperDB")}).split('=',2)[1]
+$WarnMBXCount = ($config | Where-Object {$_.StartsWith("WarningMailboxCountperDB")}).split('=',2)[1]
+$StagMBXCount = ($config | Where-Object {$_.StartsWith("StagingMailboxCountperDB")}).split('=',2)[1]
 
 #Mailoptions
 $MailServer = ($config | Where-Object {$_.StartsWith("MailServer")}).split('=',2)[1]
@@ -129,9 +141,13 @@ $Recipients = ($config | Where-Object {$_.StartsWith("Recipients")}).split('=',2
 [string[]]$MailTo = $Recipients.Split(',')
 $MailSubject = "Exchange Database(s) & Disk(s) Report - $($Company) - $now"
 
-#CsvFileName/OutputFile
+#CsvFileNames/OutputFiles
 $CsvFileName = $Company + '_' + $(get-date -f yyyyMMdd) + '.csv'
 $OutputFile = Join-Path $ScriptPath -ChildPath $CsvFileName
+$CritCsvFileName = $Company + '_critical_' + $(get-date -f yyyyMMdd) + '.csv'
+$CritOutputFile = Join-Path $ScriptPath -ChildPath $CritCsvFileName
+$StagCsvFileName = $Company + '_staging_' + $(get-date -f yyyyMMdd) + '.csv'
+$StagOutputFile = Join-Path $ScriptPath -ChildPath $StagCsvFileName
 
 #HTML/CSS
 $Style =   "<html>
@@ -180,7 +196,7 @@ if (!(Get-PSSession).ConfigurationName -eq "Microsoft.Exchange")
     }
     else
     {
-        write-host "`nExchange Management Tools are not installed. Run the script on a different machine." -ForegroundColor Red
+        Write-Host "`nExchange Management Tools are not installed. Run the script on a different machine." -ForegroundColor Red
         Return
     }
 }
@@ -188,7 +204,7 @@ if (!(Get-PSSession).ConfigurationName -eq "Microsoft.Exchange")
 #Detect, where the script is executed
 if (!(Get-ExchangeServer -Identity $env:COMPUTERNAME -ErrorAction SilentlyContinue))
 {
-    write-host "`nATTENTION: Script is executed on a non-Exchangeserver..." -ForegroundColor Cyan
+    Write-Host "`nATTENTION: Script is executed on a non-Exchangeserver..." -ForegroundColor Cyan
 }
 
 #Fetching Archives
@@ -225,6 +241,7 @@ Write-Host "`nWe found $($DBCount) databases..." -ForegroundColor White
 #Collecting DB stats
 $Results = @()
 $CritResults = @()
+$StagResults = @()
 $Count = 0
 $DBSizeTotalInGB = $null
 $WhiteSpaceTotalInGB = $null
@@ -232,6 +249,7 @@ $NetCapaTotalInGB = $null
 $MBXTotal = $null
 $ARCHTotal = $null
 $PFMBXTotal = $null
+$TOTAL = $null
 
 foreach ($Database in $Databases)
 {
@@ -244,7 +262,7 @@ foreach ($Database in $Databases)
     $MBX = $null
     $ARCH = $null
     $PFMBX = $null
-    $SUM = $null
+    $TotalMBX = $null
      
     #ProgressBar
     $Count++
@@ -257,7 +275,7 @@ foreach ($Database in $Databases)
     $ActPref = (($Database).activationpreference | where key -in (($Database).MountedOnServer -split "\.")[0]).value
     $EDBFilePath = $Database.EdbFilepath
     
-    #Read out volume and its sizes remotely
+    #Read out Disk Volumes and its sizes
     $ScriptBlock = {
         Param($EDBFilePath)
         
@@ -275,7 +293,6 @@ foreach ($Database in $Databases)
                     [PSCustomObject]@{
                     Vol = Get-CimInstance -ClassName Win32_Volume -ComputerName $database.MountedOnServer -Filter "DeviceID='$clusvol'" -ErrorAction Stop
                     }
-                    
                 }
             }
         }
@@ -287,11 +304,11 @@ foreach ($Database in $Databases)
         
     $DiskInfo = Invoke-Command -ComputerName $Database.MountedOnServer -ScriptBlock $ScriptBlock -ArgumentList $EDBFilePath
     
-    #Collect disk values from object
+    #Collect Disk values from object
     $Root = $Diskinfo.Vol.Label
     $PathType = if ($Diskinfo.Vol.Name -match '^[A-Z]:\\$') { "DriveLetter" } else { "MountPoint" }
-    $TotalGB = [math]::round(($DiskInfo.Vol.Capacity / 1GB),1)
-    $FreeGB = [math]::round(($DiskInfo.Vol.FreeSpace / 1GB),1)
+    $TotalGB = [math]::round(($DiskInfo.Vol.Capacity / 1GB),0)
+    $FreeGB = [math]::round(($DiskInfo.Vol.FreeSpace / 1GB),0)
     $FreePercent = [math]::round((($DiskInfo.Vol.FreeSpace * 100 / $DiskInfo.Vol.Capacity)),1)
     
     #Collect DB values
@@ -299,7 +316,7 @@ foreach ($Database in $Databases)
     $WhiteSpaceInGB = $Database.availablenewmailboxspace.toGB()
     $NetCapaInGB = $DBSizeInGB - $WhiteSpaceInGB
     
-    #Count Mailboxes per DB   
+    #Count Mailboxes
     try
     {
         $MBX = (Get-Mailbox -resultsize unlimited -database $database.name -ErrorAction Stop -WarningAction SilentlyContinue).count
@@ -331,7 +348,8 @@ foreach ($Database in $Databases)
         Write-Host "`nWe couldn't collect PublicFolder mailboxes for database $($database.name)."
     }
     
-    $SUM = $MBX + $ARCH + $PFMBX
+    #Sum all mailboxes
+    $TotalMBX = $MBX + $ARCH + $PFMBX
 
     #Filling up a sorted array with all values    
     $data = [ordered] @{
@@ -339,8 +357,8 @@ foreach ($Database in $Databases)
         DAG = $Database.MasterServerOrAvailabilityGroup.Name
         MountedOn = $MountedOn       
         "On ActPref 1" = if ($ActPref -gt 1) {"SWITCHED"} elseif ($ActPref -lt 1) {"CRITICAL"} else {"OK"}
-        DiskLabel = $Root
-        PathType = $PathType
+        VolLabel = $Root
+        VolType = $PathType
         "TotalSize in GB" = $TotalGB
         "FreeSpace in GB" = $FreeGB
         "FreeSpace %" = $FreePercent
@@ -352,7 +370,8 @@ foreach ($Database in $Databases)
         Mailboxes = $MBX
         Archives = $ARCH
         "PF Mailboxes" = $PFMBX             
-        MBXperDB = if ($SUM -gt $CritMBXCount) {"CRITICAL"} elseif ($SUM -gt $WarnMBXCount) {"WARNING"} else {"OK"}
+        TotalMBX = $TotalMBX
+        MBXperDB = if ($TotalMBX -gt $CritMBXCount) {"CRITICAL"} elseif ($TotalMBX -gt $WarnMBXCount) {"WARNING"} else {"OK"}
         CircLog = $Database.CircularLoggingEnabled
         LastFullBK = $Database.LastFullBackup
         LastIncBK = $Database.LastIncrementalBackup
@@ -373,12 +392,18 @@ foreach ($Database in $Databases)
     #Creating "all databases" object and adding array values
     $Results += New-Object -TypeName PSObject -Property $data
 
-    #Creating "critical db & disk" object to report separately
+    #Creating "critical" DB object to report separately
     if ($data.FreeSpace -eq "CRITICAL" -or $data.DBSize -eq "CRITICAL" -or $data.MBXperDB -eq "CRITICAL")
     {
         $CritResults += New-Object -TypeName PSObject -Property $data
     }
 
+    #Creating "staging" DB object to report separately
+    if ($FreeGB -gt $StagFreeSpace -and $FreePercent -gt $StagFreePercent -and $NetCapaInGB -lt $StagDBSize -and $TotalMBX -lt $StagMBXCount)
+    {
+        $StagResults += New-Object -TypeName PSObject -Property $data
+    }
+    
     #TOTAL numbers    
     $DBSizeTotalInGB += ($DBSizeInGB | measure -Sum).Sum
     $WhiteSpaceTotalInGB += ($WhiteSpaceInGB | measure -Sum).Sum
@@ -386,27 +411,54 @@ foreach ($Database in $Databases)
     $MBXTotal += ($MBX | measure -Sum).Sum
     $ARCHTotal += ($ARCH | measure -Sum).Sum
     $PFMBXTotal += ($PFMBX | measure -Sum).Sum
+    $TOTAL += ($TotalMBX | measure -Sum).Sum
 }
 Write-Progress -Activity $Activity -Completed
 
-#Export to CSVFile
+#Export to CSVFiles
 try
 {
     $Results | Export-Csv -Path $OutputFile -Encoding UTF8 -Delimiter ";" -NoTypeInformation -ErrorAction Stop
 
-    write-host "`n--------------------------------------------------------------------------------------------------------------"
-    write-host "Exchange Database statistics were successfully exported to ""$($OutputFile)""." -ForegroundColor Green
-    write-host "--------------------------------------------------------------------------------------------------------------"
+    $Attachments = @($OutputFile)
+    Write-Host "`nAll Exchange Disk(s) & Database(s) statistics were successfully exported to ""$($OutputFile)""." -ForegroundColor Green
 }
 catch
 {
-    write-host "`n--------------------------------------------------------------------------------------------------------------"
-    write-host "Exchange Database statistics couldn't be exported to ""$($OutputFile)""." -ForegroundColor Red
-    write-host "--------------------------------------------------------------------------------------------------------------"
+    Write-Host "`nAll Exchange Disk(s) & Database(s) statistics couldn't be exported to ""$($OutputFile)""." -ForegroundColor Red
+}
+
+#if there are critical results, create a separate CritCSVFile and staging StagingCSVFile
+if ($CritResults)
+{
+    try
+    {
+        $CritResults | Export-Csv -Path $CritOutputFile -Encoding UTF8 -Delimiter ";" -NoTypeInformation -ErrorAction Stop
+
+        $Attachments += $CritOutputFile
+        Write-Host "`nCritical Exchange Disk(s) & Database(s) statistics were successfully exported to ""$($CritOutputFile)""." -ForegroundColor Green
+
+        if ($StagResults)
+        {
+            $StagResults | Export-Csv -Path $StagOutputFile -Encoding UTF8 -Delimiter ";" -NoTypeInformation -ErrorAction Stop
+
+            $Attachments += $StagOutputFile
+            Write-Host "`nStaging Exchange Database(s) were successfully exported to ""$($StagOutputFile)""." -ForegroundColor Green
+        }
+        else
+        {
+            Write-Host "`nWe could't find any Staging Exchange Database(s) with values below your thresholds in settings.cfg." -ForegroundColor Red
+        }
+
+    }
+    catch
+    {
+        Write-Host "`nCritical Exchange Disk(s) & Database(s) statistics couldn't be exported." -ForegroundColor Red
+    }
 }
 
 #Adding SUM line for HTML Output
-$Results += New-Object PSObject -Property @{"Database" = "TOTAL"; "Gross DBSize in GB" = "DB Size`r`n"  + "$DBSizeTotalinGB" + " GB"; "Whitespace in GB" = "Whitespace`r`n" + "$WhiteSpaceTotalInGB" + " GB"; "Net DBSize in GB" = "DB NetCapacity`r`n" + "$NetCapaTotalInGB" + " GB"; "Mailboxes" = "$MBXTotal" + "`r`nMailboxes"; "Archives" = "$ARCHTotal" + "`r`nArchives" ; "PF Mailboxes" = "$PFMBXTotal" + "`r`nPF Mailboxes"}
+$Results += New-Object PSObject -Property @{"Database" = "TOTAL"; "Gross DBSize in GB" = "DB Size`r`n"  + "$DBSizeTotalinGB" + " GB"; "Whitespace in GB" = "Whitespace`r`n" + "$WhiteSpaceTotalInGB" + " GB"; "Net DBSize in GB" = "DB NetCapacity`r`n" + "$NetCapaTotalInGB" + " GB"; "Mailboxes" = "$MBXTotal" + "`r`nMailboxes"; "Archives" = "$ARCHTotal" + "`r`nArchives" ; "PF Mailboxes" = "$PFMBXTotal" + "`r`nPF Mailboxes" ; "TOTALMBX" = "$Total" + "`r`nTOTAL MBX"}
 
 #Optional: Send HTML based email report
 if (!($NoMail))
@@ -420,10 +472,17 @@ if (!($NoMail))
             $Mailbody += "<body>
             <H3 align=""left""><font color=""#FF0000"">Critical Exchange Database(s) & Disk Size(s) Table</H3></Body>"
             
-            $CritTable = $CritResults | select-object -Property "Database","DAG","MountedOn","On ActPref 1","DiskLabel","PathType","TotalSize in GB","FreeSpace in GB","FreeSpace %","FreeSpace","Gross DBSize in GB","Whitespace in GB","Net DBSize in GB","DBSize","Mailboxes","Archives","PF Mailboxes","MBXperDB" | ConvertTo-Html -Fragment | Set-HighlightErrors -CSSErrorClass fail -CSSWarnClass warn -CSSPassClass pass -CSSInfoClass info -ERRORValue $Fail -WARNValue $Warn -PASSValue $Pass -INFOValue $Info
+            $CritTable = $CritResults | select-object -Property "Database","DAG","MountedOn","On ActPref 1","VolLabel","VolType","TotalSize in GB","FreeSpace in GB","FreeSpace %","FreeSpace","Gross DBSize in GB","Whitespace in GB","Net DBSize in GB","DBSize","Mailboxes","Archives","PF Mailboxes","TOTALMBX","MBXperDB" | ConvertTo-Html -Fragment | Set-HighlightErrors -CSSErrorClass fail -CSSWarnClass warn -CSSPassClass pass -CSSInfoClass info -ERRORValue $Fail -WARNValue $Warn -PASSValue $Pass -INFOValue $Info
         
             #Add CritTable to Mailbody
             $Mailbody += $CritTable
+
+            if (!($StagResults))
+            {
+                #Adding headline for "Critical disks and databases table"
+                $Mailbody += "<body>
+                <H3 align=""left""><font color=""#FFA500"">NOTICE: We could't find any Staging Exchange Database(s) with values below your thresholds in ""settings.cfg"".</H3></Body>"
+            }
         }
         else
         {
@@ -432,7 +491,7 @@ if (!($NoMail))
         }
         
         #Adding BOLD letter/numbers in last line in HTML table, including CR
-        $HtmlTable = $Results | select-object -Property "Database","DAG","MountedOn","On ActPref 1","DiskLabel","PathType","TotalSize in GB","FreeSpace in GB","FreeSpace %","FreeSpace","Gross DBSize in GB","Whitespace in GB","Net DBSize in GB","DBSize","Mailboxes","Archives","PF Mailboxes","MBXperDB" | ConvertTo-Html -Fragment | Set-HighlightErrors -CSSErrorClass fail -CSSWarnClass warn -CSSPassClass pass -CSSInfoClass info -ERRORValue $Fail -WARNValue $Warn -PASSValue $Pass -INFOValue $Info
+        $HtmlTable = $Results | select-object -Property "Database","DAG","MountedOn","On ActPref 1","VolLabel","VolType","TotalSize in GB","FreeSpace in GB","FreeSpace %","FreeSpace","Gross DBSize in GB","Whitespace in GB","Net DBSize in GB","DBSize","Mailboxes","Archives","PF Mailboxes","TOTALMBX","MBXperDB" | ConvertTo-Html -Fragment | Set-HighlightErrors -CSSErrorClass fail -CSSWarnClass warn -CSSPassClass pass -CSSInfoClass info -ERRORValue $Fail -WARNValue $Warn -PASSValue $Pass -INFOValue $Info
         $HtmlTable = $HtmlTable -replace "`r`n","<br>"
         $Lines = $HtmlTable -split "`n"
         $lastTrIndex = ($Lines | Select-String -Pattern "<tr>" | Select-Object -Last 1).Linenumber - 1
@@ -453,9 +512,9 @@ if (!($NoMail))
         "</html>"
         
         #Send Mail with HTML body and CSV Outputfile as attachment
-        Send-MailMessage -To $MailTo -From $MailFrom -Subject $MailSubject -BodyAsHtml $FinalHtml -Attachments $OutputFile -SmtpServer $MailServer -Encoding UTF8 -ErrorAction Stop
+        Send-MailMessage -To $MailTo -From $MailFrom -Subject $MailSubject -BodyAsHtml $FinalHtml -Attachments $Attachments -SmtpServer $MailServer -Encoding UTF8 -ErrorAction Stop
         
-        Write-Host "`nNOTICE: Mail report was sent to $($Recipients) successfully."
+        Write-Host "`nNOTICE: Mail report was sent to $($Recipients) successfully." -ForegroundColor Cyan
     }
     catch
     {
