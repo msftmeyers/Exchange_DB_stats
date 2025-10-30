@@ -20,6 +20,7 @@
     V2.0 23.09.2025 - collecting disk sizes to be compared with disk thresholds, added table of critical disks and/or dbs, if there are some, so move-mailbox sources can be found easily
     V2.1 24.09.2025 - Adding CriticalCsvFile, if there are critical disks or databases found (based on critical thresholds in settings.cfg)
     V2.2 25.09.2025 - Adding StagingCsvFile with all possible destination databases for mailbox moves/distributions, based on staging thresholds in settings.cfg (if there are "special" separate dbs, you need to exclude these dbs manually from CSV before moving.)
+    V2.3 29.10.2025 - Adding volume size reporting support for operating systems "Windows Server 2012R2" and older
 
 .AUTHOR/COPYRIGHT:
     Steffen Meyer
@@ -33,7 +34,7 @@ Param(
      [switch]$NoMail
      )
 
-$version = "V2.2_25.09.2025"
+$version = "V2.3_29.10.2025"
 
 $now = Get-Date -Format G
 
@@ -281,9 +282,22 @@ foreach ($Database in $Databases)
         
         $Folder = Split-Path $EDBFilePath -Parent
 
+        $os = (Get-CimInstance Win32_OperatingSystem).version
+        $osVersion = [version]$os
+
         try
         {
-            $clusvols = (Get-Volume -FilePath $Folder -ErrorAction Stop).UniqueId
+            #Windows Server 2012R2 and older
+            if ($osversion.Major -le 6)
+            {
+                $clusvols = (Get-Volume -FilePath $Folder -ErrorAction Stop).ObjectId
+            }
+            #Windows Server 2016 and newer
+            else
+            {
+                $clusvols = (Get-Volume -FilePath $Folder -ErrorAction Stop).UniqueId
+            }
+
             foreach ($clusvol in $clusvols)
             {
                 $clusvol = $clusvol.replace('\', '\\')
