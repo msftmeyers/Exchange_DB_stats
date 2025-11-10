@@ -89,23 +89,22 @@ catch
     Write-Host "`nDo not forget to save the script!" -ForegroundColor Red
 }
 
-Write-Host "`n-------------------------------------------------------------------------------------" -foregroundcolor green
-Write-Host   " This report collects all important informations of all Exchange Databases in this   " -foregroundcolor green
-Write-Host   " organization, e.g. where it is currently mounted, Disk sizes, Disk types, DB sizes, " -foregroundcolor green
-Write-Host   " DB whitespaces (root tables), Mailbox counts, Archive counts, DB quotas, paths,     " -foregroundcolor green
-Write-Host   " circular logging and more to a common *.csv-file. Additionally, it sends an HTML-   " -ForegroundColor green
-Write-Host   " based email report (can be prevented) with all important numbers.                   " -ForegroundColor green
-Write-Host   "" 
-Write-Host   " Based on thresholds in settings.cfg config file, critical and warnings are high-    " -ForegroundColor green
-Write-Host   " lighted in HTML report. Additionally and also based on your thresholds and values,  " -ForegroundColor green
-Write-Host   " one or more attachments are added to the mail report.                               " -ForegroundColor green
-Write-Host   " You can easily use these attachments to find critical disks/databases and also      " -ForegroundColor green
-Write-Host   " staging/destination databases for emptying heavily loaded databases into others     " -ForegroundColor green
-Write-Host   " by using Migration Batches or Move-Requests.                                        " -ForegroundColor green 
-Write-Host   "-------------------------------------------------------------------------------------" -foregroundcolor green
+Write-Host "`n------------------------------------------------------------------------------------" -foregroundcolor green
+Write-Host   "This report collects all important informations of all Exchange Databases in this   " -foregroundcolor green
+Write-Host   "organization, e.g. where it is currently mounted, Disk sizes, Disk types, DB sizes, " -foregroundcolor green
+Write-Host   "DB whitespaces (root tables), Mailbox counts, Archive counts, DB quotas, paths,     " -foregroundcolor green
+Write-Host   "circular logging and more to a common *.csv-file. Additionally, it sends an HTML-   " -ForegroundColor green
+Write-Host   "based email report (can be prevented) with all important numbers.                   " -ForegroundColor green
+Write-Host "`nBased on thresholds in settings.cfg config file, critical and warnings are high-    " -ForegroundColor green
+Write-Host   "lighted in HTML report. Additionally and also based on your thresholds and values,  " -ForegroundColor green
+Write-Host   "one or more attachments are added to the mail report.                               " -ForegroundColor green
+Write-Host   "You can easily use these attachments to find critical disks/databases and also      " -ForegroundColor green
+Write-Host   "staging/destination databases for emptying heavily loaded databases into others     " -ForegroundColor green
+Write-Host   "by using Migration Batches or Move-Requests.                                        " -ForegroundColor green 
+Write-Host   "------------------------------------------------------------------------------------" -foregroundcolor green
 
-Write-Host "`nScriptversion: $version"
-Write-Host "Script started: $now"
+Write-Host "`nScript version: $version"
+Write-Host   "Script started: $now"
 
 #settings.cfg
 if (Test-Path -Path "$ScriptPath\settings.cfg")
